@@ -15,14 +15,15 @@
  * =============================================================================
  */
 import * as posenet from '@tensorflow-models/posenet';
+import * as tf from '@tensorflow/tfjs';
 import dat from 'dat.gui';
 import Stats from 'stats.js';
 
 import {drawBoundingBox, drawKeypoints, drawSkeleton, isMobile, toggleLoadingUI, tryResNetButtonName, tryResNetButtonText, updateTryResNetButtonDatGuiCss} from './demo_util';
 
-const videoWidth = 600;
-const videoHeight = 500;
 const stats = new Stats();
+
+const posenetWorker = new Worker('posenet.js');
 
 /**
  * Loads a the camera to be used in the demo
@@ -35,18 +36,14 @@ async function setupCamera() {
   }
 
   const video = document.getElementById('video');
-  video.width = videoWidth;
-  video.height = videoHeight;
 
-  const mobile = isMobile();
   const stream = await navigator.mediaDevices.getUserMedia({
     'audio': false,
     'video': {
-      facingMode: 'user',
-      width: mobile ? undefined : videoWidth,
-      height: mobile ? undefined : videoHeight,
+      facingMode: 'user'
     },
   });
+
   video.srcObject = stream;
 
   return new Promise((resolve) => {
@@ -58,6 +55,27 @@ async function setupCamera() {
 
 async function loadVideo() {
   const video = await setupCamera();
+
+  video.addEventListener('canplay', function () {
+      let ratio = 0;
+      let marginTop = 0;
+      let marginLeft = 0;
+
+      if (this.videoHeight < window.outerHeight) {
+          ratio = window.outerHeight / this.videoHeight;
+          marginLeft = (ratio * this.videoWidth - window.outerWidth) / 2;
+
+          canvas.style.height = `${ window.outerHeight}px`;
+          canvas.style.marginLeft = `${-marginLeft}px`;
+      } else if (this.videoWidth < window.outerWidth) {
+          ratio = window.outerWidth / this.videoWidth;
+          marginTop = (ratio * this.videoHeight - window.outerHeight) / 2;
+
+          canvas.style.width = `${ window.outerWidth}px`;
+          canvas.style.marginTop = `${-marginTop}px`;
+      }
+  });
+
   video.play();
 
   return video;
@@ -95,7 +113,7 @@ const guiState = {
   output: {
     showVideo: true,
     showSkeleton: true,
-    showPoints: true,
+    showPoints: false,
     showBoundingBox: false,
   },
   net: null,
@@ -283,22 +301,22 @@ function setupFPS() {
   document.getElementById('main').appendChild(stats.dom);
 }
 
+const canvas = document.getElementById('output');
+const ctx = canvas.getContext('2d');
+
 /**
  * Feeds an image to posenet to estimate poses - this is where the magic
  * happens. This function loops with a requestAnimationFrame method.
  */
-function detectPoseInRealTime(video, net) {
-  const canvas = document.getElementById('output');
-  const ctx = canvas.getContext('2d');
-
+function detectPoseInRealTime(video) {
   // since images are being fed from a webcam, we want to feed in the
   // original image and then just flip the keypoints' x coordinates. If instead
   // we flip the image, then correcting left-right keypoint pairs requires a
   // permutation on all the keypoints.
   const flipPoseHorizontal = true;
 
-  canvas.width = videoWidth;
-  canvas.height = videoHeight;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
 
   async function poseDetectionFrame() {
     if (guiState.changeToArchitecture) {
@@ -385,57 +403,60 @@ function detectPoseInRealTime(video, net) {
     let poses = [];
     let minPoseConfidence;
     let minPartConfidence;
+
     switch (guiState.algorithm) {
-      case 'single-pose':
-        const pose = await guiState.net.estimatePoses(video, {
-          flipHorizontal: flipPoseHorizontal,
-          decodingMethod: 'single-person'
-        });
-        poses = poses.concat(pose);
-        minPoseConfidence = +guiState.singlePoseDetection.minPoseConfidence;
-        minPartConfidence = +guiState.singlePoseDetection.minPartConfidence;
-        break;
+    //   case 'single-pose':
+    //     const pose = await guiState.net.estimatePoses(video, {
+    //       flipHorizontal: flipPoseHorizontal,
+    //       decodingMethod: 'single-person'
+    //     });
+    //     poses = poses.concat(pose);
+    //     minPoseConfidence = +guiState.singlePoseDetection.minPoseConfidence;
+    //     minPartConfidence = +guiState.singlePoseDetection.minPartConfidence;
+    //     break;
       case 'multi-pose':
-        let all_poses = await guiState.net.estimatePoses(video, {
-          flipHorizontal: flipPoseHorizontal,
-          decodingMethod: 'multi-person',
-          maxDetections: guiState.multiPoseDetection.maxPoseDetections,
-          scoreThreshold: guiState.multiPoseDetection.minPartConfidence,
-          nmsRadius: guiState.multiPoseDetection.nmsRadius
-        });
 
-        poses = poses.concat(all_poses);
-        minPoseConfidence = +guiState.multiPoseDetection.minPoseConfidence;
-        minPartConfidence = +guiState.multiPoseDetection.minPartConfidence;
+      const offscreen = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+      offscreen.width = video.videoWidth;
+      offscreen.height = video.videoHeight;
+      const ctx = offscreen.getContext("2d");
+      ctx.drawImage(video, 0, 0);
+      const bitmap = offscreen.transferToImageBitmap();
+
+      posenetWorker.postMessage(bitmap, [bitmap]);
+
+        // let all_poses = await guiState.net.estimatePoses(tf.browser.fromPixels(video), {
+        //   flipHorizontal: flipPoseHorizontal,
+        //   decodingMethod: 'multi-person',
+        //   maxDetections: guiState.multiPoseDetection.maxPoseDetections,
+        //   scoreThreshold: guiState.multiPoseDetection.minPartConfidence,
+        //   nmsRadius: guiState.multiPoseDetection.nmsRadius
+        // });
+        //
+        // poses = poses.concat(all_poses);
+        // minPoseConfidence = +guiState.multiPoseDetection.minPoseConfidence;
+        // minPartConfidence = +guiState.multiPoseDetection.minPartConfidence;
         break;
     }
 
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
 
-    if (guiState.output.showVideo) {
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.translate(-videoWidth, 0);
-      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-      ctx.restore();
-    }
 
     // For each pose (i.e. person) detected in an image, loop through the poses
     // and draw the resulting skeleton and keypoints if over certain confidence
     // scores
-    poses.forEach(({score, keypoints}) => {
-      if (score >= minPoseConfidence) {
-        if (guiState.output.showPoints) {
-          drawKeypoints(keypoints, minPartConfidence, ctx);
-        }
-        if (guiState.output.showSkeleton) {
-          drawSkeleton(keypoints, minPartConfidence, ctx);
-        }
-        if (guiState.output.showBoundingBox) {
-          drawBoundingBox(keypoints, ctx);
-        }
-      }
-    });
+    // poses.forEach(({score, keypoints}) => {
+    //   if (score >= minPoseConfidence) {
+    //     if (guiState.output.showPoints) {
+    //       drawKeypoints(keypoints, minPartConfidence, ctx);
+    //     }
+    //     if (guiState.output.showSkeleton) {
+    //       drawSkeleton(keypoints, minPartConfidence, ctx);
+    //     }
+    //     if (guiState.output.showBoundingBox) {
+    //       drawBoundingBox(keypoints, ctx);
+    //     }
+    //   }
+    // });
 
     // End monitoring code for frames per second
     stats.end();
@@ -451,18 +472,70 @@ function detectPoseInRealTime(video, net) {
  * available camera devices, and setting off the detectPoseInRealTime function.
  */
 export async function bindPage() {
-  toggleLoadingUI(true);
-  const net = await posenet.load({
-    architecture: guiState.input.architecture,
-    outputStride: guiState.input.outputStride,
-    inputResolution: guiState.input.inputResolution,
-    multiplier: guiState.input.multiplier,
-    quantBytes: guiState.input.quantBytes
+  // toggleLoadingUI(true);
+  // const net = await posenet.load({
+  //   architecture: guiState.input.architecture,
+  //   outputStride: guiState.input.outputStride,
+  //   inputResolution: guiState.input.inputResolution,
+  //   multiplier: guiState.input.multiplier,
+  //   quantBytes: guiState.input.quantBytes
+  // });
+  // toggleLoadingUI(false);
+  // let video;
+  // try {
+  //   video = await loadVideo();
+  // } catch (e) {
+  //   let info = document.getElementById('info');
+  //   info.textContent = 'this browser does not support video capture,' +
+  //       'or this device does not have a camera';
+  //   info.style.display = 'block';
+  //   throw e;
+  // }
+  //
+  // setupGui([], net);
+  // setupFPS();
+  // detectPoseInRealTime(video, net);
+
+  posenetWorker.postMessage({
+    type: 'INIT'
   });
-  toggleLoadingUI(false);
+}
 
+function drwaPoints(poses) {
+  let minPoseConfidence;
+  let minPartConfidence;
+
+  minPoseConfidence = +guiState.multiPoseDetection.minPoseConfidence;
+  minPartConfidence = +guiState.multiPoseDetection.minPartConfidence;
+
+  ctx.clearRect(0, 0, video.videoWidth, video.videoHeight);
+
+  if (guiState.output.showVideo) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.translate(-video.videoWidth, 0);
+    ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+    ctx.restore();
+  }
+
+  poses.forEach(({score, keypoints}) => {
+    if (score >= minPoseConfidence) {
+      if (guiState.output.showPoints) {
+        drawKeypoints(keypoints, minPartConfidence, ctx);
+      }
+      if (guiState.output.showSkeleton) {
+        drawSkeleton(keypoints, minPartConfidence, ctx);
+      }
+      if (guiState.output.showBoundingBox) {
+        drawBoundingBox(keypoints, ctx);
+      }
+    }
+  });
+}
+
+async function initDetect() {
   let video;
-
+  toggleLoadingUI(false);
   try {
     video = await loadVideo();
   } catch (e) {
@@ -473,12 +546,25 @@ export async function bindPage() {
     throw e;
   }
 
-  setupGui([], net);
+  // setupGui([], net);
   setupFPS();
-  detectPoseInRealTime(video, net);
+  detectPoseInRealTime(video);
 }
 
 navigator.getUserMedia = navigator.getUserMedia ||
     navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
 // kick off the demo
 bindPage();
+
+posenetWorker.addEventListener('message', function(e) {
+  const {data} = e;
+  switch (data.type) {
+    case 'POSENET_LOADED':
+      initDetect();
+      break;
+    case 'ESTIMATED':
+      drwaPoints(data.data);
+    default:
+      break;
+  }
+})
