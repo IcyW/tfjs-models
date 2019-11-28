@@ -1,0 +1,19 @@
+127.0.0.1 log://*
+
+# # vans.demo.com/pics/1.jpg file:///Users/icyhh/WebProjects/tfjs-models/posenet/pics/1.jpg
+
+# /^https?://vans\.demo\.com/([\w\-]*)\.html(.*)$/ file:///Users/icy/my_Developer/VANS_demo/vans_mobile/dist/$1.html
+
+# /^https?://vans\.demo\.com/(.*\.(js|css|png|jpg|gif|jpeg|svg|blob|ttf|woff|woff2|mp3).*)$/ file:///Users/icy/my_Developer/VANS_demo/vans_mobile/dist/$1
+
+# scmp-dev.cloud.tencent.com resCors://*
+
+# qpic.url.cn resCors://*
+
+/^https?://vansdemo\.com/([\w\-]*)\.html(.*)$/ file:///Users/icy/my_Developer/VANS_demo/tfjs-models-qiuqiuqiu/posenet/demos/dist/$1.html
+
+https://vansdemo.com/dannnnce.bc350ef0.mp4 file:///Users/icy/my_Developer/VANS_demo/tfjs-models-qiuqiuqiu/posenet/demos/dist/dannnnce.mp4
+
+https://vansdemo.com/dannnnce.mp4 file:///Users/icy/my_Developer/VANS_demo/tfjs-models-qiuqiuqiu/posenet/demos/distt/dannnnce.mp4
+
+/^https?://vansdemo\.com/(.*\.(js|css|png|jpg|gif|jpeg|svg|blob|ttf|woff|woff2|mp3).*)$/ file:///Users/icy/my_Developer/VANS_demo/tfjs-models-qiuqiuqiu/posenet/demos/dist/$1

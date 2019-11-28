@@ -37,14 +37,16 @@ async function setupCamera() {
 
   const video = document.getElementById('video');
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    'audio': false,
-    'video': {
-      facingMode: 'user'
-    },
-  });
+  // const stream = await navigator.mediaDevices.getUserMedia({
+  //   'audio': false,
+  //   'video': {
+  //     facingMode: 'user'
+  //   },
+  // });
 
-  video.srcObject = stream;
+  // video.srcObject = stream;
+
+  video.src = './dannnnce.mp4';
 
   return new Promise((resolve) => {
     video.onloadedmetadata = () => {
@@ -547,7 +549,7 @@ async function initDetect() {
   }
 
   // setupGui([], net);
-  setupFPS();
+  // setupFPS();
   detectPoseInRealTime(video);
 }
 
